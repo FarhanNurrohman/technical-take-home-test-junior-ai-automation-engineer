@@ -1,0 +1,1 @@
+"""Google Sheets export integration will be implemented in a later stage."""

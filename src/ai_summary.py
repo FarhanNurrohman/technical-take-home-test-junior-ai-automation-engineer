@@ -1,0 +1,1 @@
+"""Executive summary integration will be implemented in a later stage."""

@@ -1,5 +1,6 @@
 # Secrets
 .env
+.env.example
 credentials*.json
 *service-account*.json
 southcity-automation-*.json
