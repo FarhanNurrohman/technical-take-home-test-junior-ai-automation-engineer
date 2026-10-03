@@ -4,6 +4,8 @@
 credentials*.json
 *service-account*.json
 southcity-automation-*.json
+data/*
+docs/DATA_PROFILE.md
 
 # Python
 venv/
