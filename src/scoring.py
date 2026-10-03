@@ -27,7 +27,7 @@ def normalize_for_matching(text: Any) -> str:
     lowered = re.sub(r"\([^)]*\)", " ", lowered)
     lowered = lowered.replace("-", " ")
     lowered = re.sub(r"[.,;:/]", " ", lowered)
-    lowered = re.sub(r"\b(?:pengembalian|kelebihan|dana|um|advance|uang|muka|transfer|kekurangan|settlement|realisasi|pelunasan|no|nomor|voucher|umum|show|unit|apartement|apartment)\b", " ", lowered)
+    lowered = re.sub(r"\b(?:pengembalian|kelebihan|dana|um|advance|uang|muka|transfer|kekurangan|settlement|realisasi|pelunasan|no|nomor|voucher|umum|show|unit|apartement|apartment|pembayaran|kartu|kredit|untuk|tagihan|periode)\b", " ", lowered)
     lowered = re.sub(r"\b(?:p-sdt|bca2|pmt2|kk|ho|bk|bm|adv|fr01|hljc|tp01)\b", " ", lowered)
     lowered = re.sub(r"\s+", " ", lowered).strip()
     tokens: list[str] = []

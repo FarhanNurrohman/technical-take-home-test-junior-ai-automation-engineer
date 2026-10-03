@@ -223,8 +223,10 @@ def match_gl_to_targets(df_gl: pd.DataFrame, df_targets: pd.DataFrame) -> tuple[
         candidates: list[tuple[dict[str, Any], float]] = []
         for target in target_rows:
             target_desc = _clean_text(target.get("description"))
-            if pengajuan_month is not None and target.get("pengajuan_month") is not None and int(target["pengajuan_month"]) != int(pengajuan_month):
-                continue
+            if pengajuan_month is not None and not pd.isna(pengajuan_month):
+                target_date = pd.to_datetime(target.get("date"), errors="coerce")
+                if pd.isna(target_date) or int(target_date.month) != int(pengajuan_month):
+                    continue
             score_value = score(description, target_desc, {"scorer": "token_jaccard"})
             if not math.isfinite(score_value):
                 continue
@@ -336,7 +338,9 @@ def aggregate_realizations(df_targets: pd.DataFrame, df_matches: pd.DataFrame, d
         if settlement_total > 0:
             amount_check = "EXACT" if abs(settlement_total - amount) <= AMOUNT_TOLERANCE else "DIFF"
 
-        need_settlement_evidence = realization_total > 0 and matched_gl["txn_type"].nunique() == 1 and matched_gl["txn_type"].iloc[0] == "REFUND"
+        has_refund = (matched_gl["txn_type"] == "REFUND").any()
+        has_settlement = (matched_gl["txn_type"] == "SETTLEMENT").any()
+        need_settlement_evidence = realization_total > 0 and has_refund and not has_settlement
         note = ""
         adjustment_rows = matched_gl[matched_gl["txn_type"] == "ADJUSTMENT"]
         if not adjustment_rows.empty:
