@@ -1,0 +1,22 @@
+# Secrets
+.env
+credentials*.json
+*service-account*.json
+southcity-automation-*.json
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Output & scratch
+output/
+test.py
+
+# IDE
+.vscode/*
+!.vscode/settings.json
