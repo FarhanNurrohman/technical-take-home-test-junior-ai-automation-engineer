@@ -4,7 +4,10 @@
 credentials*.json
 *service-account*.json
 southcity-automation-*.json
-data/*
+data/*.xls
+data/*.xlsx
+docs/MATCH_REPORT.md
+docs/TUNING_REPORT.md
 docs/DATA_PROFILE.md
 
 # Python
@@ -15,6 +18,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+data/_profile/*
+data/_profile/
 
 # Output & scratch
 output/
@@ -23,3 +28,6 @@ test.py
 # IDE
 .vscode/*
 !.vscode/settings.json
+
+tests/golden/*
+!tests/golden/labels.example.csv

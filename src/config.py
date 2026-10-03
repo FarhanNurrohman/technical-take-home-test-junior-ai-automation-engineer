@@ -38,3 +38,34 @@ ROMAN_MONTHS = {
 ADJUSTMENT_MODE = "net"
 SIMILARITY_THRESHOLD = 0.6
 AMOUNT_TOLERANCE = 0.01
+PHRASE_SCORER = "token_jaccard"
+PHRASE_WEIGHTS = {
+    "token_jaccard": 0.35,
+    "rapidfuzz_token_set": 0.25,
+    "rapidfuzz_partial": 0.20,
+    "tfidf_cosine": 0.20,
+}
+PHRASE_THRESHOLDS = {
+    "token_jaccard": 0.6,
+    "rapidfuzz_token_set": 0.6,
+    "rapidfuzz_partial": 0.55,
+    "tfidf_cosine": 0.55,
+    "combined": 0.6,
+    "default": 0.6,
+}
+UNIT_PATTERN = r"\bSM\s*(\d{3,4})\b"
+PHRASE_BOILERPLATE = {
+    "pengembalian kelebihan dana um",
+    "pengembalian advance",
+    "transfer kekurangan dana um",
+    "pembalikan",
+    "um",
+    "settlement",
+    "realisasi",
+    "pelunasan",
+    "advance",
+    "uang muka",
+    "no",
+    "nomor",
+    "voucher",
+}
