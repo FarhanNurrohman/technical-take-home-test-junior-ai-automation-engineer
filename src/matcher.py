@@ -159,7 +159,7 @@ def match_gl_to_targets(df_gl: pd.DataFrame, df_targets: pd.DataFrame) -> tuple[
 
         description = _clean_text(row.get("description"))
         po_codes = [str(code).upper() for code in row.get("po_codes", []) if str(code).strip()]
-        pengajuan_code = str(row.get("pengajuan_code") or "").upper() or None
+        pengajuan_code = _clean_text(row.get("pengajuan_code")).upper() or None
         pengajuan_month = row.get("pengajuan_month")
         assigned = False
 
@@ -197,7 +197,7 @@ def match_gl_to_targets(df_gl: pd.DataFrame, df_targets: pd.DataFrame) -> tuple[
         same_pengajuan = [
             target
             for target in target_rows
-            if str(target.get("pengajuan_code") or "").upper() == str(pengajuan_code or "").upper()
+            if _clean_text(target.get("pengajuan_code")).upper() == str(pengajuan_code or "").upper()
         ]
         if pengajuan_code and same_pengajuan:
             if len({target["target_id"] for target in same_pengajuan}) > 1:

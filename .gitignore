@@ -1,6 +1,5 @@
 # Secrets
 .env
-.env.example
 credentials*.json
 *service-account*.json
 southcity-automation-*.json
@@ -18,6 +17,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+data/*
 data/_profile/*
 data/_profile/
 

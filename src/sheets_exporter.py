@@ -492,7 +492,7 @@ def _run_with_retry(operation: Any) -> Any:
 	raise RuntimeError("Google Sheets operation ended unexpectedly")
 
 
-def _create_client() -> tuple[Any, str | None]:
+def _create_client(*, read_only: bool = False) -> tuple[Any, str | None]:
 	credential_path = config.GOOGLE_SHEETS_CRED
 	if not credential_path:
 		raise ValueError("GOOGLE_SHEETS_CRED belum dikonfigurasi di environment.")
@@ -509,13 +509,24 @@ def _create_client() -> tuple[Any, str | None]:
 		import gspread
 		from google.oauth2.service_account import Credentials
 
+		scopes = (
+			["https://www.googleapis.com/auth/spreadsheets.readonly"]
+			if read_only
+			else ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+		)
 		credentials = Credentials.from_service_account_file(
-			str(path), scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+			str(path), scopes=scopes
 		)
 		return gspread.authorize(credentials), service_email
 	except (ImportError, ValueError, OSError) as error:
 		logger.error("Google Sheets client initialization failed; verify credentials and dependencies")
 		raise RuntimeError("Gagal menginisialisasi autentikasi Google Sheets; periksa file kredensial dan dependensi.") from error
+
+
+def create_sheets_client(*, read_only: bool = False) -> Any:
+	"""Create an authenticated gspread client for report access."""
+	client, _ = _create_client(read_only=read_only)
+	return client
 
 
 def _ensure_worksheets(spreadsheet: Any) -> dict[str, Any]:
@@ -617,3 +628,60 @@ def export_to_sheets(
 		"result_meta": meta,
 		"shared_publicly": bool(should_share),
 	}
+
+
+def export_to_xlsx(
+	df_result: pd.DataFrame,
+	summary_text: str,
+	metrics: dict[str, Any],
+	df_unmatched: pd.DataFrame,
+	*,
+	path: str | Path,
+	df_debit_exceptions: pd.DataFrame | None = None,
+	df_suggestions: pd.DataFrame | None = None,
+	summarize_sections: Any = None,
+) -> dict[str, Any]:
+	"""Write the existing three-sheet report payloads to a formatted XLSX file."""
+	from openpyxl import Workbook
+	from openpyxl.styles import Alignment, Font, PatternFill
+	from openpyxl.utils import get_column_letter
+
+	result_payload = build_result_payload(df_result)
+	meta = result_payload["meta"]
+	dashboard_payload = build_dashboard_payload(metrics, summary_text, df_result, meta)
+	unmatched_payload = build_unmatched_payload(df_unmatched, df_debit_exceptions, df_suggestions, summarize_sections)
+	workbook = Workbook()
+	workbook.remove(workbook.active)
+	for title, payload in zip(_EXPECTED_SHEETS, (result_payload, dashboard_payload, unmatched_payload)):
+		worksheet = workbook.create_sheet(title)
+		for row_index, row in enumerate(payload["values"], start=1):
+			for column_index, value in enumerate(row, start=1):
+				worksheet.cell(row_index, column_index, value)
+		for merge in payload["merges"]:
+			worksheet.merge_cells(merge["range"])
+		for spec in payload["formats"]:
+			for row in worksheet[spec["range"]]:
+				for cell in row:
+					if spec.get("background"):
+						cell.fill = PatternFill("solid", fgColor=spec["background"].lstrip("#"))
+					if spec.get("bold"):
+						cell.font = Font(bold=True, color=spec.get("font_color", "#000000").lstrip("#"))
+					elif spec.get("font_color"):
+						cell.font = Font(color=spec["font_color"].lstrip("#"))
+					if spec.get("wrap") or spec.get("align"):
+						cell.alignment = Alignment(
+							wrap_text=bool(spec.get("wrap")),
+							horizontal=spec.get("align", "left").lower(),
+						)
+					if spec.get("number_format"):
+						cell.number_format = spec["number_format"]
+		for width in payload["column_widths"]:
+			worksheet.column_dimensions[width["column"]].width = max(8, width["width"] / 7)
+		worksheet.freeze_panes = f"{get_column_letter(payload['freeze']['columns'] + 1)}{payload['freeze']['rows'] + 1}"
+		for height in payload.get("row_heights", []):
+			worksheet.row_dimensions[height["row"]].height = height["height"]
+	output_path = Path(path)
+	output_path.parent.mkdir(parents=True, exist_ok=True)
+	workbook.save(output_path)
+	workbook.close()
+	return {"path": str(output_path), "sheet_rows": {sheet.title: sheet.max_row for sheet in workbook.worksheets}, "result_meta": meta}

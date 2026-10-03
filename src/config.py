@@ -12,6 +12,12 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL")
 GOOGLE_SHEETS_CRED = os.getenv("GOOGLE_SHEETS_CRED")
 SPREADSHEET_KEY = os.getenv("SPREADSHEET_KEY")
 SHARE_PUBLIC = os.getenv("SHARE_PUBLIC", "false").strip().lower() in {"1", "true", "yes", "on"}
+CHAT_AUTH_USER = os.getenv("CHAT_AUTH_USER")
+CHAT_AUTH_PASS = os.getenv("CHAT_AUTH_PASS")
+CHAT_TIMEOUT_SECONDS = int(os.getenv("CHAT_TIMEOUT_SECONDS", "30"))
+ADJUSTMENT_MODE = os.getenv("ADJUSTMENT_MODE", "net").strip().lower()
+if ADJUSTMENT_MODE not in {"net", "ignore"}:
+     raise ValueError("ADJUSTMENT_MODE harus bernilai 'net' atau 'ignore'.")
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
@@ -36,7 +42,6 @@ ROMAN_MONTHS = {
 	"XI": 11,
 	"XII": 12,
 }
-ADJUSTMENT_MODE = "net"
 SIMILARITY_THRESHOLD = 0.6
 AMOUNT_TOLERANCE = 0.01
 PHRASE_SCORER = "token_jaccard"

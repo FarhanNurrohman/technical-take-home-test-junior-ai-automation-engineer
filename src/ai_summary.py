@@ -84,7 +84,8 @@ def _classify_item(row: dict[str, Any]) -> tuple[str, str, list[str]]:
 	settlement_total = _number(row.get("settlement_total"))
 	refund_total = _number(row.get("refund_total"))
 	status = _text(row.get("status")).upper()
-	need_evidence = bool(row.get("need_settlement_evidence", False))
+	evidence_value = row.get("need_settlement_evidence", False)
+	need_evidence = bool(evidence_value) if evidence_value is not None and not pd.isna(evidence_value) else False
 	flags: list[str] = []
 
 	if need_evidence:
