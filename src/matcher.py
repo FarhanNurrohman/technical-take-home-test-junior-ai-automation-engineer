@@ -259,6 +259,10 @@ def match_gl_to_targets(df_gl: pd.DataFrame, df_targets: pd.DataFrame) -> tuple[
 
     df_matches = pd.DataFrame(match_rows, columns=["gl_row", "target_id", "match_type", "confidence", "txn_type", "voucher_no", "description"])
     df_unmatched = pd.DataFrame(unmatched_rows, columns=["gl_row", "voucher_no", "description", "txn_type", "reason"])
+    detail_columns = [column for column in ("gl_row", "gl_date", "credit", "debit") if column in gl_rows.columns]
+    if "gl_row" in detail_columns:
+        unmatched_details = gl_rows[detail_columns].drop_duplicates(subset="gl_row")
+        df_unmatched = df_unmatched.merge(unmatched_details, on="gl_row", how="left", validate="one_to_one")
     return df_matches, df_unmatched
 
 

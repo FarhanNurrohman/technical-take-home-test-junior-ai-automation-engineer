@@ -137,3 +137,30 @@ def test_phrase_matching_finds_labeled_dropbox_settlement():
 
     assert matches["target_id"].tolist() == ["WP-21"]
     assert unmatched.empty
+
+
+def test_unmatched_rows_retain_gl_date_and_amount_for_audit_export():
+    gl = pd.DataFrame(
+        [
+            {
+                "gl_row": 31,
+                "gl_date": "2026-04-12",
+                "voucher_no": "PMT2/BM/2604/0031",
+                "description": "SETTLEMENT UNKNOWN/PO/26040001",
+                "debit": 0,
+                "credit": 125_000,
+                "txn_type": "SETTLEMENT",
+                "po_codes": ["UNKNOWN/PO/26040001"],
+                "pengajuan_code": None,
+                "pengajuan_month": None,
+            }
+        ]
+    )
+    targets = pd.DataFrame(columns=["target_id", "description", "po_codes", "pengajuan_code", "pengajuan_month"])
+
+    matches, unmatched = match_gl_to_targets(gl, targets)
+
+    assert matches.empty
+    assert unmatched.loc[0, "gl_date"] == "2026-04-12"
+    assert unmatched.loc[0, "credit"] == 125_000
+    assert unmatched.loc[0, "debit"] == 0
