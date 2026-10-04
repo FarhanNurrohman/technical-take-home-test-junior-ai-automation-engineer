@@ -20,14 +20,25 @@ htmlcov/
 data/*
 data/_profile/*
 data/_profile/
+data/
+.github/agents/*
+.github/instructions/*
+.github/prompts/*
+.github/*
+/src/prompts/*
+/src/prompts/
 
 # Output & scratch
 output/
 test.py
+.vscode/
+.vscode/*
+
 
 # IDE
 .vscode/*
 !.vscode/settings.json
 
+test/*
 tests/golden/*
 !tests/golden/labels.example.csv

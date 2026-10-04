@@ -98,7 +98,7 @@ full-run adalah `GEMINI_API_KEY`, `GEMINI_MODEL`, `GOOGLE_SHEETS_CRED`, dan
 5. Buat atau buka spreadsheet tujuan, lalu bagikan kepada `client_email`
    sebagai **Editor**.
 6. Isi `SPREADSHEET_KEY` dengan bagian ID dari URL
-   `https://docs.google.com/spreadsheets/d/<ID>/edit`.
+   `https://docs.google.com/spreadsheets/d/1Vggthn-mWIXDeAQlnd_HBBPfXIfTMDCHNWrHisjld8o/edit`.
 
 Ekspor memakai formula yang divalidasi agar tidak bergantung pada pemisah
 locale spreadsheet. Locale spreadsheet karena itu bebas, selama izin dan API
