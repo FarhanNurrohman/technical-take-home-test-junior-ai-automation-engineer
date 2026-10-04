@@ -390,6 +390,11 @@ def _is_blocked(response: Any) -> bool:
 	return False
 
 
+def _is_model_not_found(error: Exception) -> bool:
+	status = getattr(error, "status_code", None) or getattr(error, "code", None)
+	return status == 404 or "404" in str(error) and "not_found" in str(error).lower()
+
+
 def generate_executive_summary(
 	df_result: pd.DataFrame,
 	reconcile_result: dict[str, Any],
@@ -421,9 +426,14 @@ def generate_executive_summary(
 		generation_config: Any = types.GenerateContentConfig(
 			system_instruction=payload["system_instruction"],
 			temperature=0.2,
+			automatic_function_calling={"disable": True},
 		)
 	except (ImportError, AttributeError):
-		generation_config = {"system_instruction": payload["system_instruction"], "temperature": 0.2}
+		generation_config = {
+			"system_instruction": payload["system_instruction"],
+			"temperature": 0.2,
+			"automatic_function_calling": {"disable": True},
+		}
 
 	for attempt in range(_MAX_ATTEMPTS):
 		try:
@@ -450,6 +460,12 @@ def generate_executive_summary(
 				)
 			return text
 		except Exception as error:
+			if _is_model_not_found(error):
+				logger.error("Gemini model %s is not available", config.GEMINI_MODEL)
+				return (
+					f"model '{config.GEMINI_MODEL}' tidak tersedia; cek daftar model "
+					"di Google AI Studio.\n\n" + fallback_summary(metrics)
+				)
 			if attempt + 1 >= _MAX_ATTEMPTS:
 				logger.warning("Gemini request failed after %d attempts: %s", _MAX_ATTEMPTS, type(error).__name__)
 				break

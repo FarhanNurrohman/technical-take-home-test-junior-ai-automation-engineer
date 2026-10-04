@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from app import launch_chat
 from src.ai_summary import compute_metrics, fallback_summary, generate_executive_summary
 from src.artifacts import save_artifacts
 from src.config import GL_PATH, ROOT_DIR, WORKING_PAPER_PATH
@@ -148,6 +149,11 @@ def main() -> int:
         f"realisasi WP={metrics['wp']['total_realization']:.2f}; "
         f"kredit GL unmatched={metrics['unmatched_count']} baris / {metrics['unmatched_total']:.2f}; "
         f"selisih rekonsiliasi={result['reconcile_result']['diff_total']:.2f}"
+    )
+    launch_chat(
+        result,
+        use_ai=not arguments.no_ai,
+        data_status="Data pipeline settlement (snapshot saat pipeline selesai)",
     )
     return 0
 

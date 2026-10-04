@@ -28,6 +28,37 @@ _STATUS_COLORS = {
 }
 
 
+def _a1_range_bounds(cell_range: str) -> tuple[int, int, int, int]:
+	"""Convert a simple A1 range into zero-based half-open row/column bounds."""
+	match = re.fullmatch(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", cell_range.upper())
+	if not match:
+		raise ValueError(f"Format merge tidak valid: {cell_range}")
+	start_column = _column_index(match.group(1))
+	end_column = _column_index(match.group(3)) + 1
+	start_row = int(match.group(2)) - 1
+	end_row = int(match.group(4))
+	if start_row >= end_row or start_column >= end_column:
+		raise ValueError(f"Range merge kosong atau terbalik: {cell_range}")
+	return start_row, end_row, start_column, end_column
+
+
+def validate_payload(payload: dict[str, Any]) -> None:
+	"""Validate that frozen boundaries do not split any merged cell."""
+	freeze = payload.get("freeze", {})
+	frozen_rows = int(freeze.get("rows", 0))
+	frozen_columns = int(freeze.get("columns", 0))
+	if frozen_rows < 0 or frozen_columns < 0:
+		raise ValueError("Batas freeze tidak boleh negatif.")
+	for merge in payload.get("merges", []):
+		cell_range = str(merge.get("range", ""))
+		start_row, end_row, start_column, end_column = _a1_range_bounds(cell_range)
+		if start_row < frozen_rows < end_row or start_column < frozen_columns < end_column:
+			raise ValueError(
+				f"Merge {cell_range} berpotongan dengan batas freeze "
+				f"(rows={frozen_rows}, columns={frozen_columns})."
+			)
+
+
 def _missing(value: Any) -> bool:
 	if value is None:
 		return True
@@ -222,7 +253,7 @@ def build_result_payload(df_result: pd.DataFrame) -> dict[str, Any]:
 		"formats": formats,
 		"merges": merges,
 		"column_widths": [{"column": "A", "width": 110}, {"column": "B", "width": 190}, {"column": "C", "width": 360}, {"column": "D", "width": 125}, {"column": "E", "width": 125}, {"column": "F", "width": 300}, {"column": "G", "width": 130}, {"column": "H", "width": 130}, {"column": "I", "width": 300}, {"column": "J", "width": 135}, {"column": "K", "width": 220}, {"column": "L", "width": 200}],
-		"freeze": {"rows": 7, "columns": 3},
+		"freeze": {"rows": 7, "columns": 0},
 		"meta": meta,
 	}
 
@@ -547,6 +578,7 @@ def _sheet_id(worksheet: Any, index: int) -> int:
 
 
 def _write_payload(spreadsheet: Any, worksheet: Any, payload: dict[str, Any], index: int) -> None:
+	validate_payload(payload)
 	rows = max(1, len(payload["values"]))
 	columns = max((len(row) for row in payload["values"]), default=1)
 	grid_rows = max(rows, int(getattr(worksheet, "row_count", rows)))
@@ -563,13 +595,23 @@ def _write_payload(spreadsheet: Any, worksheet: Any, payload: dict[str, Any], in
 				for rule_index in reversed(range(len(sheet.get("conditionalFormats", [])))):
 					requests.append({"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": rule_index}})
 				break
-	_run_with_retry(lambda: spreadsheet.batch_update({"requests": requests}))
+	try:
+		_run_with_retry(lambda: spreadsheet.batch_update({"requests": requests}))
+	except Exception as error:
+		request_match = re.search(r"requests\[(\d+)\]", str(error))
+		request_index = request_match.group(1) if request_match else "unknown"
+		raise RuntimeError(
+			f"Google Sheets batch_update gagal untuk worksheet '{worksheet.title}', "
+			f"request [{request_index}]: {error}"
+		) from error
 	if grid_rows != rows or grid_columns != columns:
 		_run_with_retry(lambda: worksheet.resize(rows=rows, cols=columns))
 
 
 def _raise_google_error(error: Exception, service_email: str | None, client: Any) -> None:
 	message = str(error).lower()
+	if "google sheets batch_update gagal untuk worksheet" in message:
+		raise RuntimeError(str(error)) from error
 	if "403" in message or "permission" in message or "not found" in message:
 		email = service_email or getattr(getattr(client, "auth", None), "service_account_email", None) or "email service account"
 		raise PermissionError(f"Spreadsheet tidak dapat diakses. Bagikan spreadsheet ke {email} dengan akses Editor.") from error

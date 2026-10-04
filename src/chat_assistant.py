@@ -428,6 +428,15 @@ def answer(question: str, history: list[Any] | None, artifacts: dict[str, Any], 
         return blocked
     if not config.GEMINI_API_KEY or not config.GEMINI_MODEL:
         return fallback_answer(question, artifacts)
+    if client is None:
+        try:
+            from src.agent import build_agent
+            from src.data_source import ArtifactDataSource
+
+            return build_agent(data_source=ArtifactDataSource(artifacts)).invoke(question, history)
+        except Exception:
+            logger.exception("LangChain Finance Assistant unavailable; using deterministic fallback")
+            return fallback_answer(question, artifacts)
     try:
         if client is None:
             from google import genai

@@ -72,3 +72,25 @@ def test_main_dry_run_returns_nonzero_on_reconciliation_failure(mocker):
     mocker.patch.object(main, "run_pipeline", side_effect=ValueError("Reconciliation failed"))
 
     assert main.main() == 1
+
+
+def test_main_launches_chat_after_successful_pipeline(mocker):
+    pipeline_result = {
+        "metrics": {
+            "wp": {"total_advance": 0, "total_realization": 0},
+            "unmatched_count": 0,
+            "unmatched_total": 0,
+        },
+        "reconcile_result": {"diff_total": 0},
+    }
+    mocker.patch("sys.argv", ["main.py", "--dry-run", "--no-ai"])
+    mocker.patch.object(main, "run_pipeline", return_value=pipeline_result)
+    launch_chat = mocker.patch.object(main, "launch_chat")
+
+    assert main.main() == 0
+
+    launch_chat.assert_called_once_with(
+        pipeline_result,
+        use_ai=False,
+        data_status="Data pipeline settlement (snapshot saat pipeline selesai)",
+    )

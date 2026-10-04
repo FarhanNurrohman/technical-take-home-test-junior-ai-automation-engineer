@@ -9,7 +9,9 @@ from src.sheets_exporter import (
 	build_result_payload,
 	build_unmatched_payload,
 	export_to_sheets,
+	validate_payload,
 )
+from src.sheets_exporter import _write_payload
 from src.matcher import aggregate_realizations, build_targets, match_gl_to_targets
 
 
@@ -91,6 +93,36 @@ def test_build_result_payload_uses_dynamic_subtotals_and_single_row_sections(sam
 	assert values[meta["grand_total_row"] - 1][3] == f"=D{meta['subtotal_a_row']}+D{meta['subtotal_b_row']}"
 	assert values[meta["section_b_rows"][0] - 1][2].startswith("'")
 	assert sample_result.loc[1, "description"] == "=SUM(A1)"
+
+
+def test_result_payload_freezes_rows_only_and_validates_merged_header(sample_result):
+	payload = build_result_payload(sample_result)
+
+	assert payload["freeze"] == {"rows": 7, "columns": 0}
+	validate_payload(payload)
+
+
+def test_validate_payload_rejects_merge_crossing_frozen_row_boundary():
+	payload = {
+		"values": [[""] * 3 for _ in range(4)],
+		"formats": [],
+		"merges": [{"range": "A3:B5"}],
+		"column_widths": [],
+		"freeze": {"rows": 4, "columns": 0},
+	}
+
+	with pytest.raises(ValueError, match="[Mm]erge.*freeze"):
+		validate_payload(payload)
+
+
+def test_batch_update_error_includes_worksheet_and_request_index(sample_result, mocker):
+	payload = build_result_payload(sample_result)
+	worksheet = mocker.Mock(title="Working_Paper_Result", id=1, row_count=100, col_count=12)
+	spreadsheet = mocker.Mock(spec=["batch_update"])
+	spreadsheet.batch_update.side_effect = ValueError("can't freeze columns requests[153]")
+
+	with pytest.raises(RuntimeError, match=r"Working_Paper_Result.*request \[153\]"):
+		_write_payload(spreadsheet, worksheet, payload, 0)
 
 
 def test_build_result_payload_has_empty_new_advance_section():

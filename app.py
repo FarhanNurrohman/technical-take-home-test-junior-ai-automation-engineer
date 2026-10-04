@@ -12,7 +12,7 @@ from typing import Any
 from src.artifacts import load_artifacts
 from src.ai_summary import compute_metrics
 from src.chat_assistant import answer, fallback_answer
-from src.config import CHAT_AUTH_PASS, CHAT_AUTH_USER, ROOT_DIR
+from src.config import CHAT_AUTH_PASS, CHAT_AUTH_USER, CHAT_RATE_LIMIT_PER_MIN, ROOT_DIR
 from src.sheets_chat_loader import load_chat_artifacts_from_sheets
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,8 @@ def create_chat_handler(artifacts: dict[str, Any], *, use_ai: bool = True):
         recent = requests[key]
         while recent and now - recent[0] >= 60:
             recent.popleft()
-        if len(recent) >= 10:
-            return "Batas 10 pertanyaan per menit tercapai untuk sesi ini."
+        if len(recent) >= CHAT_RATE_LIMIT_PER_MIN:
+            return f"Batas {CHAT_RATE_LIMIT_PER_MIN} pertanyaan per menit tercapai untuk sesi ini."
         recent.append(now)
         question = str(message or "")[:500]
         if not question.strip():
@@ -85,7 +85,7 @@ def create_interface(artifacts: dict[str, Any], *, use_ai: bool, data_status: st
 
     return gr.ChatInterface(
         fn=respond,
-        title="SouthCity Settlement Assistant",
+        title="Finance Assistant: Advance & Prepayment",
         examples=[
             "Buat ringkasan posisi settlement.",
             "Item apa yang masih punya saldo?",
@@ -100,6 +100,13 @@ def create_interface(artifacts: dict[str, Any], *, use_ai: bool, data_status: st
             "Jangan masukkan kredensial atau data sensitif."
         ),
     )
+
+
+def launch_chat(artifacts: dict[str, Any], *, use_ai: bool, data_status: str) -> None:
+    """Launch the Gradio chat using an already loaded artifact snapshot."""
+    interface = create_interface(artifacts, use_ai=use_ai, data_status=data_status)
+    auth = (CHAT_AUTH_USER, CHAT_AUTH_PASS) if CHAT_AUTH_USER and CHAT_AUTH_PASS else None
+    interface.launch(server_name="127.0.0.1", share=False, auth=auth)
 
 
 def main() -> int:
@@ -130,9 +137,7 @@ def main() -> int:
     except ImportError:
         logger.error("Gradio tidak terpasang. Install dependensi dari requirements.txt.")
         return 1
-    interface = create_interface(artifacts, use_ai=not arguments.no_ai, data_status=status)
-    auth = (CHAT_AUTH_USER, CHAT_AUTH_PASS) if CHAT_AUTH_USER and CHAT_AUTH_PASS else None
-    interface.launch(server_name="127.0.0.1", share=False, auth=auth)
+    launch_chat(artifacts, use_ai=not arguments.no_ai, data_status=status)
     return 0
 
 

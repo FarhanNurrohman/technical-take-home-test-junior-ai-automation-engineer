@@ -199,6 +199,22 @@ def test_generate_summary_returns_valid_response_unchanged(result_rows, mocker):
     )
     assert response == response_text
     client.models.generate_content.assert_called_once()
+    config = client.models.generate_content.call_args.kwargs["config"]
+    assert config.automatic_function_calling.disable is True
+
+
+def test_generate_summary_handles_model_not_found_with_clear_message(result_rows, mocker, monkeypatch):
+    monkeypatch.setattr("src.ai_summary.config.GEMINI_MODEL", "missing-model")
+    client = mocker.Mock()
+    error = RuntimeError("404 NOT_FOUND: model missing-model was not found")
+    client.models.generate_content.side_effect = error
+
+    result = generate_executive_summary(
+    	result_rows, {"diff_total": 0}, pd.DataFrame(), client=client
+    )
+
+    assert "model 'missing-model' tidak tersedia" in result
+    assert "Google AI Studio" in result
 
 
 def test_generate_summary_appends_kpi_table_for_missing_figures(result_rows, mocker):
