@@ -128,7 +128,7 @@ def load_chat_artifacts_from_sheets(
     spreadsheet_key: str | None = None,
 ) -> dict[str, Any]:
     """Read report tabs, then retain only safe row fields and Python-computed metrics."""
-    key = spreadsheet_key or config.SPREADSHEET_KEY
+    key = config.SPREADSHEET_KEY if spreadsheet_key is None else spreadsheet_key
     if not key:
         raise ValueError("SPREADSHEET_KEY belum dikonfigurasi; isi .env untuk membaca Google Sheets.")
     sheets_client = client if client is not None else create_sheets_client(read_only=True)

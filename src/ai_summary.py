@@ -155,6 +155,7 @@ def compute_metrics(
 		case_type, suggested_action, flags = _classify_item(row)
 		unsettled_items.append(
 			{
+				"target_id": _text(row.get("target_id")),
 				"section": _text(row.get("section", "WP")) or "WP",
 				"description": _text(row.get("description")),
 				"amount": _number(row.get("amount")),
@@ -269,10 +270,21 @@ def _item_lines(metrics: dict[str, Any], include_new: bool = False) -> list[str]
 		if item["section"] == "NEW_ADVANCE" and not include_new:
 			continue
 		lines.append(
-			f"- {item['description']}: saldo {format_rupiah(item['balance'])} ({item['case_type']}). "
+			f"- {item['description']}: saldo {format_rupiah(item['balance'])} "
+			f"({_CASE_TYPE_LABELS.get(item['case_type'], item['case_type'])}). "
 			f"{item['suggested_action']}"
 		)
 	return lines
+
+
+_CASE_TYPE_LABELS = {
+	"NEED_EVIDENCE": "Butuh bukti realisasi",
+	"PARTIAL_SETTLEMENT": "Realisasi sebagian",
+	"OVER_SETTLED": "Kelebihan realisasi",
+	"NO_MOVEMENT": "Belum ada pergerakan",
+	"NEW_ADVANCE_OPEN": "Advance baru",
+	"UNSETTLED": "Belum terselesaikan",
+}
 
 
 def fallback_summary(metrics: dict[str, Any]) -> str:
@@ -294,7 +306,8 @@ def fallback_summary(metrics: dict[str, Any]) -> str:
 	wp_items = _item_lines(metrics)
 	lines.extend(wp_items or ["Tidak ada item WP dengan saldo unsettled."])
 	new_items = [
-		f"- {item['description']}: saldo {format_rupiah(item['balance'])} ({item['case_type']}). "
+		f"- {item['description']}: saldo {format_rupiah(item['balance'])} "
+		f"({_CASE_TYPE_LABELS.get(item['case_type'], item['case_type'])}). "
 		f"{item['suggested_action']}"
 		for item in metrics.get("unsettled_items", [])
 		if item["section"] == "NEW_ADVANCE"
@@ -308,7 +321,10 @@ def fallback_summary(metrics: dict[str, Any]) -> str:
 			continue
 		cases.setdefault(item["case_type"], []).append(item["suggested_action"])
 	if cases:
-		lines.extend(f"- **{case_type}:** " + " ".join(actions) for case_type, actions in sorted(cases.items()))
+		lines.extend(
+			f"- {_CASE_TYPE_LABELS.get(case_type, case_type)}: " + " ".join(actions)
+			for case_type, actions in sorted(cases.items())
+		)
 	else:
 		lines.append("Tidak ada tindak lanjut untuk item unsettled WP.")
 	lines.append("(dibuat otomatis tanpa AI)")

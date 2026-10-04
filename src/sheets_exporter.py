@@ -8,6 +8,8 @@ import math
 import re
 import time
 from datetime import datetime
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ from src import config
 logger = logging.getLogger(__name__)
 _RESULT_COLUMNS = 12
 _UNMATCHED_COLUMNS = 7
-_DASHBOARD_COLUMNS = 8
+_DASHBOARD_COLUMNS = 9
 _EXPECTED_SHEETS = ("Working_Paper_Result", "Dashboard", "Unmatched_GL")
 _STATUS_COLORS = {
 	"PARTIAL": "#FFF2CC",
@@ -26,6 +28,38 @@ _STATUS_COLORS = {
 	"OVER_SETTLED": "#F4CCCC",
 	"SETTLED": "#D9EAD3",
 }
+
+
+def assert_locale_neutral(formula: str) -> None:
+	"""Reject formula syntax that depends on a spreadsheet locale."""
+	if not isinstance(formula, str) or not formula.startswith("="):
+		raise ValueError("Formula harus berupa string yang diawali '='.")
+	unquoted: list[str] = []
+	in_quotes = False
+	index = 0
+	while index < len(formula):
+		char = formula[index]
+		if char == '"':
+			if in_quotes and index + 1 < len(formula) and formula[index + 1] == '"':
+				index += 2
+				continue
+			in_quotes = not in_quotes
+		elif not in_quotes:
+			if char in ",;":
+				raise ValueError(f"Formula tidak netral locale: pemisah '{char}'.")
+			unquoted.append(char)
+		index += 1
+	if in_quotes:
+		raise ValueError("Formula memiliki tanda kutip yang tidak berpasangan.")
+	if re.search(r"(?<![\w.])\d+\.\d+(?![\w.])", "".join(unquoted)):
+		raise ValueError("Formula tidak netral locale: desimal bertitik.")
+
+
+def _validate_payload_formulas(payload: dict[str, Any]) -> None:
+	for row in payload.get("values", []):
+		for value in row:
+			if isinstance(value, str) and value.startswith("="):
+				assert_locale_neutral(value)
 
 
 def _a1_range_bounds(cell_range: str) -> tuple[int, int, int, int]:
@@ -44,6 +78,7 @@ def _a1_range_bounds(cell_range: str) -> tuple[int, int, int, int]:
 
 def validate_payload(payload: dict[str, Any]) -> None:
 	"""Validate that frozen boundaries do not split any merged cell."""
+	_validate_payload_formulas(payload)
 	freeze = payload.get("freeze", {})
 	frozen_rows = int(freeze.get("rows", 0))
 	frozen_columns = int(freeze.get("columns", 0))
@@ -116,6 +151,19 @@ def _value(row: dict[str, Any], *keys: str, default: Any = None) -> Any:
 		if key in row and not _missing(row[key]):
 			return row[key]
 	return default
+
+
+def _required_item_value(item: dict[str, Any], key: str) -> Any:
+	"""Return a required dashboard item field or fail with its exact name."""
+	if key not in item or _missing(item[key]):
+		raise KeyError(f"unsettled_items item missing required key: {key}")
+	return item[key]
+
+
+_SECTION_LABELS = {
+	"WP": "Advance awal (WP)",
+	"NEW_ADVANCE": "Advance baru April",
+}
 
 
 def _blank_row(width: int) -> list[Any]:
@@ -346,6 +394,7 @@ def _plain_summary(summary_text: str) -> list[str]:
 		line = re.sub(r"^\s*#{1,6}\s*", "", line)
 		line = line.replace("**", "").replace("__", "").replace("`", "")
 		line = re.sub(r"^[-*+]\s+", "• ", line)
+		line = line.replace("*", "").replace("_", "")
 		lines.append(_safe_text(line))
 	return lines or [""]
 
@@ -361,11 +410,11 @@ def build_dashboard_payload(
 	values: list[list[Any]] = [
 		["Dashboard Advance Settlement April 2026"] + [""] * (_DASHBOARD_COLUMNS - 1),
 		_blank_row(_DASHBOARD_COLUMNS),
-		["KPI", "Advance Awal (WP)", "Advance Baru April", "Total", "", "", "", ""],
-		["Total Advance", f"='Working_Paper_Result'!D{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!D{result_meta['subtotal_b_row']}", "=B4+C4", "", "", "", ""],
-		["Total Realisasi (G)", f"='Working_Paper_Result'!G{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!G{result_meta['subtotal_b_row']}", "=B5+C5", "", "", "", ""],
-		["Total Sisa Saldo (H)", f"='Working_Paper_Result'!H{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!H{result_meta['subtotal_b_row']}", "=B6+C6", "", "", "", ""],
-		["Jumlah Item Unsettled/Partial", _countif_formula("A", result_meta), _countif_formula("B", result_meta), "=B7+C7", "", "", "", ""],
+		["KPI", "Advance Awal (WP)", "Advance Baru April", "Total", "", "", "", "", ""],
+		["Total Advance", f"='Working_Paper_Result'!D{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!D{result_meta['subtotal_b_row']}", "=B4+C4", "", "", "", "", ""],
+		["Total Realisasi (G)", f"='Working_Paper_Result'!G{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!G{result_meta['subtotal_b_row']}", "=B5+C5", "", "", "", "", ""],
+		["Total Sisa Saldo (H)", f"='Working_Paper_Result'!H{result_meta['subtotal_a_row']}", f"='Working_Paper_Result'!H{result_meta['subtotal_b_row']}", "=B6+C6", "", "", "", "", ""],
+		["Jumlah Item Unsettled/Partial", _unsettled_formula("A", result_meta), _unsettled_formula("B", result_meta), "=B7+C7", "", "", "", "", ""],
 		["Total Advance Awal = hanya baris Working Paper asli"] + [""] * (_DASHBOARD_COLUMNS - 1),
 		_blank_row(_DASHBOARD_COLUMNS),
 		["Kualitas Data", "Jumlah / Nilai"] + [""] * (_DASHBOARD_COLUMNS - 2),
@@ -397,42 +446,51 @@ def build_dashboard_payload(
 	values.append(_blank_row(_DASHBOARD_COLUMNS))
 	detail_title_row = len(values) + 1
 	values.append(["Rincian Item Unsettled / Partial"] + [""] * (_DASHBOARD_COLUMNS - 1))
-	_add_format({"formats": formats}, f"A{detail_title_row}:H{detail_title_row}", background="#D9E1F2", bold=True)
-	values.append(["Bagian", "Deskripsi", "Amount", "Realisasi", "Saldo", "Status", "Flag", "Saran"])
-	_add_format({"formats": formats}, f"A{detail_title_row + 1}:H{detail_title_row + 1}", background="#1F4E78", bold=True, wrap=True)
-	_add_format({"formats": formats}, f"A{detail_title_row + 1}:H{detail_title_row + 1}", font_color="#FFFFFF")
+	_add_format({"formats": formats}, f"A{detail_title_row}:I{detail_title_row}", background="#D9E1F2", bold=True)
+	values.append(["Bagian", "Ref", "Deskripsi", "Amount", "Realisasi", "Saldo", "Status", "Flag", "Saran"])
+	_add_format({"formats": formats}, f"A{detail_title_row + 1}:I{detail_title_row + 1}", background="#1F4E78", bold=True, wrap=True)
+	_add_format({"formats": formats}, f"A{detail_title_row + 1}:I{detail_title_row + 1}", font_color="#FFFFFF")
 	items = metrics.get("unsettled_items", []) or []
-	items = sorted(items, key=lambda item: _number(item.get("balance")), reverse=True)
+	items = sorted(items, key=lambda item: _number(_required_item_value(item, "balance")), reverse=True)
 	for item in items:
+		section = _text(_required_item_value(item, "section"))
+		section_label = _SECTION_LABELS.get(section, section)
 		values.append([
-			_safe_text(item.get("section")),
-			_safe_text(item.get("description")),
-			_number(item.get("amount")),
-			_number(_value(item, "realized", "realization_amount", default=0)),
-			_number(_value(item, "balance", "saldo", default=0)),
-			_safe_text(item.get("status")),
+			_safe_text(section_label),
+			_safe_text(_required_item_value(item, "target_id")),
+			_safe_text(_required_item_value(item, "description")),
+			_number(_required_item_value(item, "amount")),
+			_number(_required_item_value(item, "realized")),
+			_number(_required_item_value(item, "balance")),
+			_safe_text(_required_item_value(item, "status")),
 			_safe_text(", ".join(item.get("flags", [])) if isinstance(item.get("flags"), list) else item.get("flags")),
 			_safe_text(_value(item, "suggested_action", "suggestion", default="")),
 		])
-		_add_format({"formats": formats}, f"A{len(values)}:H{len(values)}", wrap=True)
+		row_number = len(values)
+		_add_format({"formats": formats}, f"A{row_number}:I{row_number}", wrap=True)
+		_add_format({"formats": formats}, f"D{row_number}:F{row_number}", number_format="#,##0")
 	values.append([f"Diperbarui: {datetime.now().astimezone().isoformat(timespec='seconds')}"] + [""] * (_DASHBOARD_COLUMNS - 1))
 	return {
 		"values": values,
 		"formats": formats,
 		"merges": merges,
-		"column_widths": [{"column": "A", "width": 190}, {"column": "B", "width": 330}, {"column": "C", "width": 150}, {"column": "D", "width": 150}, {"column": "E", "width": 150}, {"column": "F", "width": 150}, {"column": "G", "width": 220}, {"column": "H", "width": 430}],
+		"column_widths": [{"column": "A", "width": 190}, {"column": "B", "width": 190}, {"column": "C", "width": 330}, {"column": "D", "width": 150}, {"column": "E", "width": 150}, {"column": "F", "width": 150}, {"column": "G", "width": 150}, {"column": "H", "width": 220}, {"column": "I", "width": 430}],
 		"freeze": {"rows": 3, "columns": 0},
 		"row_heights": row_heights,
 		"meta": {"summary_title_row": summary_title_row, "detail_title_row": detail_title_row, "result_meta": result_meta},
 	}
 
 
-def _countif_formula(section: str, meta: dict[str, Any]) -> str:
+def _unsettled_formula(section: str, meta: dict[str, Any]) -> str:
 	start = meta.get(f"section_{section.lower()}_start")
 	end = meta.get(f"section_{section.lower()}_end")
 	if start is None or end is None:
 		return "=0"
-	return f"=COUNTIF('Working_Paper_Result'!H{start}:H{end},\">0.01\")"
+	tolerance = Fraction(Decimal(str(config.AMOUNT_TOLERANCE)))
+	return (
+		f"=SUMPRODUCT(--('Working_Paper_Result'!H{start}:H{end}>{tolerance.numerator}/"
+		f"{tolerance.denominator}))"
+	)
 
 
 def _column_index(column: str) -> int:
@@ -695,6 +753,7 @@ def export_to_xlsx(
 	workbook = Workbook()
 	workbook.remove(workbook.active)
 	for title, payload in zip(_EXPECTED_SHEETS, (result_payload, dashboard_payload, unmatched_payload)):
+		validate_payload(payload)
 		worksheet = workbook.create_sheet(title)
 		for row_index, row in enumerate(payload["values"], start=1):
 			for column_index, value in enumerate(row, start=1):

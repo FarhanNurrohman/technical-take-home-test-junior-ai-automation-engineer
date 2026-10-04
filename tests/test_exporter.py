@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from src.sheets_exporter import (
+	assert_locale_neutral,
 	build_dashboard_payload,
 	build_result_payload,
 	build_unmatched_payload,
@@ -69,8 +70,8 @@ def sample_metrics():
 		"reconcile_ok": True,
 		"reconcile_diff": 0,
 		"unsettled_items": [
-			{"section": "WP", "description": "Studio", "amount": 1_583_700, "realized": 268_000, "balance": 1_315_700, "status": "PARTIAL", "flags": ["need_settlement_evidence"], "suggested_action": "Minta bukti."},
-			{"section": "NEW_ADVANCE", "description": "Advance baru", "amount": 100_000, "realized": 0, "balance": 100_000, "status": "UNSETTLED", "flags": [], "suggested_action": "Pantau."},
+			{"target_id": "WP-8", "section": "WP", "description": "Studio", "amount": 1_583_700, "realized": 268_000, "balance": 1_315_700, "status": "PARTIAL", "flags": ["need_settlement_evidence"], "suggested_action": "Minta bukti."},
+			{"target_id": "NEW-TP01/PO/26040001", "section": "NEW_ADVANCE", "description": "Advance baru", "amount": 100_000, "realized": 0, "balance": 100_000, "status": "UNSETTLED", "flags": [], "suggested_action": "Pantau."},
 		],
 	}
 
@@ -258,9 +259,57 @@ def test_build_dashboard_payload_links_kpis_and_flattens_summary(sample_result, 
 	assert any(isinstance(cell, str) and cell.startswith("=") and "Working_Paper_Result" in cell for row in values for cell in row)
 	assert any("• Periksa kwitansi" in str(cell) for row in values for cell in row)
 	assert all("**" not in str(cell) and "##" not in str(cell) for row in values for cell in row)
+	assert all("*" not in str(cell) for row in values for cell in row)
 	assert all("A" in merge["range"] and ":F" in merge["range"] for merge in dashboard["merges"] if merge.get("purpose") == "summary")
-	assert values.index(next(row for row in values if len(row) > 1 and row[1] == "Studio")) < values.index(next(row for row in values if len(row) > 1 and row[1] == "Advance baru"))
+	assert values.index(next(row for row in values if len(row) > 2 and row[2] == "Studio")) < values.index(next(row for row in values if len(row) > 2 and row[2] == "Advance baru"))
 	assert dashboard["row_heights"]
+
+
+def test_all_fixture_payload_formulas_are_locale_neutral(sample_result, sample_metrics):
+	result_payload = build_result_payload(sample_result)
+	dashboard_payload = build_dashboard_payload(
+		sample_metrics,
+		"Ringkasan",
+		sample_result,
+		result_payload["meta"],
+	)
+	unmatched_payload = build_unmatched_payload(pd.DataFrame([{"gl_row": 1, "credit": 25_000}]))
+
+	assert dashboard_payload["values"][6][1].startswith("=SUMPRODUCT(--(")
+	assert ">1/100))" in dashboard_payload["values"][6][1]
+	assert dashboard_payload["values"][6][2].startswith("=SUMPRODUCT(--(")
+	for payload in (result_payload, dashboard_payload, unmatched_payload):
+		for row in payload["values"]:
+			for cell in row:
+				if isinstance(cell, str) and cell.startswith("="):
+					assert_locale_neutral(cell)
+
+
+@pytest.mark.parametrize("formula", ['=COUNTIF(H8:H9,">0.01")', "=SUMPRODUCT(--(H8:H9>0.01))", "=SUM(H8:H9;H10:H11)"])
+def test_locale_neutral_formula_rejects_locale_specific_syntax(formula):
+	with pytest.raises(ValueError, match="locale"):
+		assert_locale_neutral(formula)
+
+
+def test_dashboard_unsettled_table_has_required_columns_and_values(sample_metrics, sample_result):
+	payload = build_dashboard_payload(sample_metrics, "Ringkasan", sample_result, build_result_payload(sample_result)["meta"])
+	header_index = next(index for index, row in enumerate(payload["values"]) if row[:9] == [
+		"Bagian", "Ref", "Deskripsi", "Amount", "Realisasi", "Saldo", "Status", "Flag", "Saran"
+	])
+	rows = payload["values"][header_index + 1:header_index + 3]
+
+	assert [row[0] for row in rows] == ["Advance awal (WP)", "Advance baru April"]
+	assert [row[1] for row in rows] == ["WP-8", "NEW-TP01/PO/26040001"]
+	assert all(all(row[index] not in ("", None) for index in range(1, 7)) for row in rows)
+	assert all(len(row) == 9 for row in payload["values"])
+	assert any(spec.get("number_format") == "#,##0" and spec["range"].startswith("D") for spec in payload["formats"])
+
+
+def test_dashboard_unsettled_table_rejects_missing_required_metric_key(sample_metrics, sample_result):
+	sample_metrics["unsettled_items"][0].pop("description")
+
+	with pytest.raises(KeyError, match="description"):
+		build_dashboard_payload(sample_metrics, "Ringkasan", sample_result, build_result_payload(sample_result)["meta"])
 
 
 def test_result_payload_matches_approved_studio_and_bedroom_fixture():
