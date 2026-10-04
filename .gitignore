@@ -29,6 +29,8 @@ data/
 /src/prompts/
 
 # Output & scratch
+tests/*
+tests/golden/*
 output/
 test.py
 .vscode/
